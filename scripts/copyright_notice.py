@@ -5,9 +5,10 @@
 import argparse
 import logging
 import mmap
+import os
 import os.path
 import sys
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 from scripts.error import (
     CopyrightNoticeParsingError,
@@ -98,7 +99,11 @@ class CopyrightNoticeChecker:
 
     @staticmethod
     def check_files_have_notice_with_retcode(
-        filenames: Sequence[str], notice_path: str, *, enforce_all: bool = False
+        filenames: Sequence[str],
+        notice_path: str,
+        *,
+        enforce_all: bool = False,
+        ignore_extensions: List[str] = [""]
     ) -> int:
         """
         Check if a set of files contains the required copyright notice.
@@ -108,15 +113,28 @@ class CopyrightNoticeChecker:
         :param filenames: List of file paths to check
         :param notice_path: Path to the copyright notice template
         :param enforce_all: If False, checks only added staged files
+        :param ignore_extensions: list of strings containing the extensions to ignore
         :return: unsigned exit code (0 for success)
         """
         try:
+            # filter the filenames based on the list of ignored extensions
+            filenames = CopyrightNoticeChecker.filter_filenames_for_ext(
+                filenames, ignore_extensions
+            )
             has_notice = CopyrightNoticeChecker.check_files_have_notice(
                 filenames=filenames, notice_path=notice_path, enforce_all=enforce_all
             )
             return 0 if has_notice else 1
         except Exception as exc:  # pylint: disable=broad-except
             return exception_to_retcode_mapping.get(exc.__class__, 255)
+
+    @staticmethod
+    def filter_filenames_for_ext(filenames, ignore_extensions):
+        return [
+            f
+            for f in filenames
+            if not any(os.path.splitext(f)[1] == ext for ext in ignore_extensions)
+        ]
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -138,10 +156,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         action="store_true",
         help="Enforce all files are checked, not just staged files.",
     )
+    parser.add_argument(
+        "--ignore-extensions",
+        default="",
+        help="List of file extensions to ignore.",
+        nargs="+",
+    )
     args = parser.parse_args(argv)
-
     return CopyrightNoticeChecker.check_files_have_notice_with_retcode(
-        args.filenames, args.notice, enforce_all=args.enforce_all
+        args.filenames,
+        args.notice,
+        enforce_all=args.enforce_all,
+        ignore_extensions=args.ignore_extensions,
     )
 
 
